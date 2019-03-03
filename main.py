@@ -106,7 +106,7 @@ else:
     torch.save(corpus, fn)
 
 # And this anywhere before evaluate
-unk_index = corpus.dictionary.word2idx['<UNK>']
+unk_index = corpus.dictionary.word2idx['<unk>']
 unk_penalty = math.log(args.unk_penalty)
 
 eval_batch_size = 10
