@@ -65,7 +65,11 @@ parser.add_argument('--optimizer', type=str,  default='sgd',
                     help='optimizer to use (sgd, adam)')
 parser.add_argument('--when', nargs="+", type=int, default=[-1],
                     help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
+# Add this to arguments
+parser.add_argument('--unk_penalty', type=int, default=47425)
+
 args = parser.parse_args()
+
 args.tied = True
 
 # Set the random seed manually for reproducibility.
@@ -100,6 +104,10 @@ else:
     print('Producing dataset...')
     corpus = data.Corpus(args.data)
     torch.save(corpus, fn)
+
+# And this anywhere before evaluate
+unk_index = corpus.dictionary.word2idx['<UNK>']
+unk_penalty = math.log(args.unk_penalty)
 
 eval_batch_size = 10
 test_batch_size = 1
@@ -159,15 +167,20 @@ def evaluate(data_source, batch_size=10):
     model.eval()
     if args.model == 'QRNN': model.reset()
     total_loss = 0
+    anno_loss = 0
+    anno_count = 0
+    num_unks = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        num_unks += targets.eq(unk_index).float().sum().item()
         output, hidden = model(data, hidden)
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
-
+    loss = total_loss.item() / len(data_source)
+    upp = loss + num_unks * unk_penalty / data_source.numel()
+    return loss, upp
 
 def train():
     # Turn on training mode which enables dropout.
@@ -249,7 +262,7 @@ try:
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
                 'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-              epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
+              epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)))
             print('-' * 89)
 
             if val_loss2 < stored_loss:
