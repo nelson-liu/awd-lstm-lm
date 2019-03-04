@@ -62,6 +62,7 @@ parser.add_argument('--beta', type=float, default=1,
                     help='beta slowness regularization applied on RNN activiation (beta = 0 means no regularization)')
 parser.add_argument('--wdecay', type=float, default=1.2e-6,
                     help='weight decay applied to all weights')
+parser.add_argument('--unk_penalty', type=int, default=47425)
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
@@ -77,6 +78,10 @@ if torch.cuda.is_available():
 ###############################################################################
 
 corpus = data.Corpus(args.data)
+
+# And this anywhere before evaluate
+unk_index = corpus.dictionary.word2idx['<UNK>']
+unk_penalty = math.log(args.unk_penalty)
 
 eval_batch_size = 10
 test_batch_size = 1
@@ -104,19 +109,23 @@ criterion = nn.CrossEntropyLoss()
 
 def evaluate(data_source, batch_size=10):
     # Turn on evaluation mode which disables dropout.
-    if args.model == 'QRNN': model.reset()
     model.eval()
+    if args.model == 'QRNN': model.reset()
     total_loss = 0
+    anno_loss = 0
+    anno_count = 0
+    num_unks = 0
     ntokens = len(corpus.dictionary)
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
+        num_unks += targets.eq(unk_index).float().sum().data[0]
         output, hidden = model(data, hidden)
-        output_flat = output.view(-1, ntokens)
-        total_loss += len(data) * criterion(output_flat, targets).data
+        total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
-
+    loss = total_loss[0] / len(data_source)
+    upp = loss + num_unks * unk_penalty / data_source.numel()
+    return loss, upp
 
 def train():
     # Turn on training mode which enables dropout.
@@ -180,7 +189,7 @@ with open(args.save, 'rb') as f:
 
 # Loop over epochs.
 lr = args.lr
-stored_loss = evaluate(val_data)
+stored_loss, upp = evaluate(val_data)
 best_val_loss = []
 # At any point you can hit Ctrl + C to break out of training early.
 try:
@@ -195,11 +204,11 @@ try:
                 tmp[prm] = prm.data.clone()
                 prm.data = optimizer.state[prm]['ax'].clone()
 
-            val_loss2 = evaluate(val_data)
+            val_loss2, upp = evaluate(val_data)
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                    'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
-                                               val_loss2, math.exp(val_loss2)))
+                    'valid ppl {:8.2f} | valid upp {:5.3f}'.format(epoch, (time.time() - epoch_start_time),
+                                                                   val_loss2, math.exp(val_loss2), upp))
             print('-' * 89)
 
             if val_loss2 < stored_loss:
@@ -226,10 +235,10 @@ except KeyboardInterrupt:
 # Load the best saved model.
 with open(args.save, 'rb') as f:
     model = torch.load(f)
-    
+
 # Run on test data.
-test_loss = evaluate(test_data, test_batch_size)
+test_loss, upp = evaluate(test_data, test_batch_size)
 print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
-    test_loss, math.exp(test_loss)))
+print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test upp {:5.3f}'.format(
+    test_loss, math.exp(test_loss), upp))
 print('=' * 89)

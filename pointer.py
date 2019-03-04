@@ -28,6 +28,7 @@ parser.add_argument('--theta', type=float, default=0.6625523432485668,
                     help='mix between uniform distribution and pointer softmax distribution over previous words')
 parser.add_argument('--lambdasm', type=float, default=0.12785920428335693,
                     help='linear mix between only pointer (1) and only vocab (0) distribution')
+parser.add_argument('--unk_penalty', type=int, default=47425)
 args = parser.parse_args()
 
 ###############################################################################
@@ -35,6 +36,10 @@ args = parser.parse_args()
 ###############################################################################
 
 corpus = data.Corpus(args.data)
+
+# And this anywhere before evaluate
+unk_index = corpus.dictionary.word2idx['<UNK>']
+unk_penalty = math.log(args.unk_penalty)
 
 eval_batch_size = 1
 test_batch_size = 1
@@ -65,9 +70,11 @@ def evaluate(data_source, batch_size=10, window=args.window):
     hidden = model.init_hidden(batch_size)
     next_word_history = None
     pointer_history = None
+    num_unks = 0
     for i in range(0, data_source.size(0) - 1, args.bptt):
         if i > 0: print(i, len(data_source), math.exp(total_loss / i))
         data, targets = get_batch(data_source, i, evaluation=True, args=args)
+        num_unks += targets.eq(unk_index).float().sum().data[0]
         output, hidden, rnn_outs, _ = model(data, hidden, return_h=True)
         rnn_out = rnn_outs[-1].squeeze()
         output_flat = output.view(-1, ntokens)
@@ -110,7 +117,9 @@ def evaluate(data_source, batch_size=10, window=args.window):
         hidden = repackage_hidden(hidden)
         next_word_history = next_word_history[-window:]
         pointer_history = pointer_history[-window:]
-    return total_loss / len(data_source)
+    loss = total_loss / len(data_source)
+    upp = loss + num_unks * unk_penalty / data_source.numel()
+    return loss, upp
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
@@ -121,15 +130,15 @@ with open(args.save, 'rb') as f:
 print(model)
 
 # Run on val data.
-val_loss = evaluate(val_data, test_batch_size)
+val_loss, upp = evaluate(val_data, test_batch_size)
 print('=' * 89)
-print('| End of pointer | val loss {:5.2f} | val ppl {:8.2f}'.format(
-    val_loss, math.exp(val_loss)))
+print('| End of pointer | val loss {:5.2f} | val ppl {:8.2f} | valid upp {:5.3f}'.format(
+    val_loss, math.exp(val_loss), upp))
 print('=' * 89)
 
 # Run on test data.
-test_loss = evaluate(test_data, test_batch_size)
+test_loss, upp = evaluate(test_data, test_batch_size)
 print('=' * 89)
-print('| End of pointer | test loss {:5.2f} | test ppl {:8.2f}'.format(
-    test_loss, math.exp(test_loss)))
+print('| End of pointer | test loss {:5.2f} | test ppl {:8.2f} | valid upp {:5.3f}'.format(
+    test_loss, math.exp(test_loss), upp))
 print('=' * 89)
