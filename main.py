@@ -174,7 +174,7 @@ def evaluate(data_source, batch_size=10):
     hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         data, targets = get_batch(data_source, i, args, evaluation=True)
-        num_unks += targets.eq(unk_index).float().sum().item()
+        num_unks += targets.eq(unk_index).float().sum()[0]
         output, hidden = model(data, hidden)
         total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets).data
         hidden = repackage_hidden(hidden)
