@@ -258,11 +258,11 @@ try:
                 tmp[prm] = prm.data.clone()
                 prm.data = optimizer.state[prm]['ax'].clone()
 
-            val_loss2 = evaluate(val_data)
+            val_loss2, upp = evaluate(val_data)
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-              epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2)))
+                'valid ppl {:8.2f} | valid bpc {:8.3f} | valid upp {:5.3f}'.format(
+                    epoch, (time.time() - epoch_start_time), val_loss2, math.exp(val_loss2), val_loss2 / math.log(2), upp))
             print('-' * 89)
 
             if val_loss2 < stored_loss:
@@ -274,11 +274,11 @@ try:
                 prm.data = tmp[prm].clone()
 
         else:
-            val_loss = evaluate(val_data, eval_batch_size)
+            val_loss, upp = evaluate(val_data, eval_batch_size)
             print('-' * 89)
             print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f} | valid bpc {:8.3f}'.format(
-              epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2)))
+                'valid ppl {:8.2f} | valid bpc {:8.3f} | valid upp {:5.3f}'.format(
+                    epoch, (time.time() - epoch_start_time), val_loss, math.exp(val_loss), val_loss / math.log(2), upp))
             print('-' * 89)
 
             if val_loss < stored_loss:
@@ -306,8 +306,8 @@ except KeyboardInterrupt:
 model_load(args.save)
 
 # Run on test data.
-test_loss = evaluate(test_data, test_batch_size)
+test_loss, upp = evaluate(test_data, test_batch_size)
 print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
-    test_loss, math.exp(test_loss), test_loss / math.log(2)))
+print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f} | test upp {:5.3f}'.format(
+    test_loss, math.exp(test_loss), test_loss / math.log(2), upp))
 print('=' * 89)
