@@ -77,7 +77,7 @@ def evaluate(data_source, batch_size=10, window=args.window):
         num_unks += targets.eq(unk_index).float().sum().data[0]
         output, hidden, rnn_outs, _ = model(data, hidden, return_h=True)
         rnn_out = rnn_outs[-1].squeeze()
-        output_flat = output.view(-1, ntokens)
+        output_flat = model.decoder(output).view(-1, ntokens)
         ###
         # Fill pointer history
         start_idx = len(next_word_history) if next_word_history is not None else 0
@@ -127,6 +127,7 @@ with open(args.save, 'rb') as f:
         model = torch.load(f, map_location=lambda storage, loc: storage)
     else:
         model = torch.load(f)
+    model = model[0]
 print(model)
 
 # Run on val data.
